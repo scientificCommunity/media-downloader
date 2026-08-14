@@ -38,7 +38,39 @@ export function classifyMedia(url: string, rawContentType?: string): MediaKind {
   return 'unknown';
 }
 
+function inferBilibiliM4sTrack(url: string): MediaTrackKind {
+  let parsed: URL | null = null;
+  let pathname: string;
+
+  try {
+    parsed = new URL(url);
+    pathname = parsed.pathname;
+  } catch {
+    pathname = url.split('?', 1)[0];
+  }
+
+  const lowerHost = parsed?.hostname.toLowerCase() ?? '';
+  const lowerPath = pathname.toLowerCase();
+  const looksLikeBilibiliMedia = lowerHost.includes('bilivideo.') || lowerPath.includes('/upgcxcode/');
+  if (!looksLikeBilibiliMedia) return 'unknown';
+
+  const match = /-(\d+)\.m4s$/i.exec(pathname);
+  if (!match) return 'unknown';
+
+  const formatId = match[1];
+
+  // Bilibili DASH audio representations use the 302xx family, including
+  // common AAC variants such as 30216/30232/30280 and higher-quality variants.
+  // Other numeric .m4s format ids in the video representation URLs are video.
+  return formatId.startsWith('302') ? 'audio' : 'video';
+}
+
 export function inferTrackKindFromUrl(url: string): MediaTrackKind {
+  // Bilibili CDNs frequently respond with application/octet-stream for both
+  // tracks, so inspect the .m4s format id before generic URL/MIME heuristics.
+  const bilibiliKind = inferBilibiliM4sTrack(url);
+  if (bilibiliKind !== 'unknown') return bilibiliKind;
+
   const lowerUrl = url.toLowerCase();
 
   if (/(^|[\/_?&=.-])(audio|sound|aac|mp3|m4a)([\/_?&=.-]|$)/i.test(lowerUrl)) {
@@ -47,10 +79,6 @@ export function inferTrackKindFromUrl(url: string): MediaTrackKind {
 
   if (/(^|[\/_?&=.-])(video|avc|h264|h265|hevc|av1|vp9)([\/_?&=.-]|$)/i.test(lowerUrl)) {
     return 'video';
-  }
-
-  if (inferBilibiliAudioTrack(url)) {
-    return 'audio';
   }
 
   return 'unknown';
@@ -76,27 +104,4 @@ export function isRangeLikeMediaResponse(
   if (kind === 'segment') return true;
   if (statusCode === 206 && Boolean(contentRange)) return true;
   return acceptRanges?.toLowerCase() === 'bytes' && kind === 'direct';
-}
-
-const BILIBILI_AUDIO_FORMAT_IDS = new Set([
-  '30216',
-  '30232',
-  '30280'
-]);
-
-function inferBilibiliAudioTrack(url: string): boolean {
-  let pathname: string;
-
-  try {
-    pathname = new URL(url).pathname;
-  } catch {
-    pathname = url.split('?', 1)[0];
-  }
-
-  const match = /-(\d+)\.m4s$/i.exec(pathname);
-
-  return Boolean(
-    match &&
-    BILIBILI_AUDIO_FORMAT_IDS.has(match[1])
-  );
 }
