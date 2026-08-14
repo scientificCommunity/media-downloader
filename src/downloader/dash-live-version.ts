@@ -1,0 +1,1 @@
+export const DASH_LIVE_MODULE_VERSION = 1;
