@@ -1,0 +1,102 @@
+name: Release Extension
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build extension
+        run: npm run build
+
+      - name: Package release
+        shell: bash
+        run: |
+          VERSION="$(node -p "require('./public/manifest.json').version")"
+          TAG="v${VERSION}"
+          ARCHIVE="media-downloader-${TAG}.zip"
+
+          test -f dist/manifest.json
+          (
+            cd dist
+            zip -r "../${ARCHIVE}" .
+          )
+
+          sha256sum "${ARCHIVE}" > "${ARCHIVE}.sha256"
+
+          echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
+          echo "TAG=${TAG}" >> "$GITHUB_ENV"
+          echo "ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"
+
+      - name: Verify package layout
+        shell: bash
+        run: |
+          unzip -l "$ARCHIVE" | grep -q 'manifest.json'
+          unzip -p "$ARCHIVE" manifest.json | grep -q '"manifest_version": 3'
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          cat > release-notes.md <<EOF
+          # Media Downloader ${TAG}
+
+          可直接加载到 Chrome 的预构建插件包。
+
+          ## 安装方法
+
+          1. 下载 \`${ARCHIVE}\`
+          2. 解压 ZIP
+          3. 打开 \`chrome://extensions\`
+          4. 开启右上角“开发者模式”
+          5. 点击“加载已解压的扩展程序”
+          6. 选择刚刚解压出来的文件夹
+          7. 将 Media Downloader 固定到浏览器工具栏即可使用
+
+          ## 当前能力
+
+          - 网页媒体资源检测
+          - 普通视频文件下载
+          - DASH / MSE / Range 媒体轨道检测
+          - 视频/音频分轨自动识别与本地 MP4 合并
+          - HLS 直播录制、停止保存和恢复
+          - Bilibili 非 DRM M4S 视频/音频轨道识别
+          - 英文、简体中文、繁体中文、日语界面
+
+          > 不支持 DRM 受保护内容，也不用于绕过付费墙、登录限制或其他访问控制。
+
+          同时提供 \`${ARCHIVE}.sha256\` 用于文件完整性校验。
+          EOF
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$ARCHIVE" "$ARCHIVE.sha256" --clobber
+          else
+            gh release create "$TAG" \
+              "$ARCHIVE" \
+              "$ARCHIVE.sha256" \
+              --target "$GITHUB_SHA" \
+              --title "Media Downloader ${TAG}" \
+              --notes-file release-notes.md
+          fi
