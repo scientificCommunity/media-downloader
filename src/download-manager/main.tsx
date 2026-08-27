@@ -377,7 +377,7 @@ function App() {
   }
 
   const hlsCanRecord = Boolean(
-    hlsProbe?.isLive
+    hlsProbe
     && !hlsProbe.media.encrypted
     && !hlsProbe.separateAudio
   );
@@ -481,7 +481,6 @@ function App() {
                 </div>
               </div>
 
-              {!hlsProbe.isLive && <p className="mutedNote">{t('hlsVodNotRecorder')}</p>}
               {hlsProbe.media.encrypted && (
                 <p className="errorNote">{t('errorHlsEncrypted', hlsProbe.media.encryptionMethod ?? 'UNKNOWN')}</p>
               )}
@@ -539,12 +538,18 @@ function App() {
                   <div className="buttonRow">
                     {liveState !== 'running' ? (
                       <button className="primaryButton" onClick={() => void startLiveRecording()}>
-                        {liveState === 'failed' ? t('retryRecording') : t('startRecording')}
+                        {liveState === 'failed'
+                          ? t('retryRecording')
+                          : hlsProbe.isLive
+                            ? t('startRecording')
+                            : t('downloadMergeMp4')}
                       </button>
                     ) : remuxing ? (
                       <button className="primaryButton" disabled>{t('finalizingMp4')}</button>
-                    ) : (
+                    ) : hlsProbe.isLive ? (
                       <button className="stopButton" onClick={stopLiveRecording}>{t('stopAndSave')}</button>
+                    ) : (
+                      <button className="primaryButton" disabled>{t('downloadingMuxing')}</button>
                     )}
                   </div>
                 </div>
