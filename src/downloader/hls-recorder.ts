@@ -178,7 +178,8 @@ function mapKey(map?: HlsMap): string | null {
   return `${map.url}|${map.byteRange?.offset ?? ''}|${map.byteRange?.length ?? ''}`;
 }
 
-function chooseInitialSegments(media: HlsMediaPlaylist): HlsSegment[] {
+function chooseInitialSegments(media: HlsMediaPlaylist, isLive: boolean): HlsSegment[] {
+  if (!isLive) return media.segments;
   return media.segments.length <= 3 ? media.segments : media.segments.slice(-3);
 }
 
@@ -289,7 +290,6 @@ async function remuxTsToMp4(
 }
 
 async function runRecording(options: RecordingSessionOptions): Promise<HlsRecordingResult> {
-  if (!options.probe.isLive) throw new Error(t('errorHlsNotLive'));
   if (options.probe.media.encrypted) {
     throw new Error(t('errorHlsEncrypted', options.probe.media.encryptionMethod ?? 'UNKNOWN'));
   }
@@ -422,7 +422,7 @@ async function runRecording(options: RecordingSessionOptions): Promise<HlsRecord
   let captureError: unknown;
   try {
     const initialSegments = lastSequence == null
-      ? chooseInitialSegments(media)
+      ? chooseInitialSegments(media, options.probe.isLive)
       : media.segments.filter((segment) => segment.sequence > lastSequence!);
 
     for (const segment of initialSegments) {
@@ -619,7 +619,7 @@ async function resumeRemuxOnly(options: ResumeHlsOptions): Promise<HlsRecordingR
       segmentsWritten: task.segmentsWritten,
       lastSequence: task.lastSequence,
       stoppedByUser: false,
-      endedNaturally: false,
+      endedNaturally: true,
       finalFileName
     };
   } catch (error) {
@@ -635,39 +635,33 @@ async function resumeRemuxOnly(options: ResumeHlsOptions): Promise<HlsRecordingR
 }
 
 export async function resumeHlsLive(options: ResumeHlsOptions): Promise<HlsRecordingResult> {
-  if ((options.task.phase ?? 'capture') === 'remux') {
-    return resumeRemuxOnly(options);
-  }
-
-  await ensureWritePermission(options.task.fileHandle);
-  if (options.task.directoryHandle) {
-    await ensureDirectoryWritePermission(options.task.directoryHandle);
-  }
+  if ((options.task.phase ?? 'capture') === 'remux') return resumeRemuxOnly(options);
 
   const probe = await probeHlsCandidate({
-    ...options,
+    candidate: options.candidate,
+    sourcePageUrl: options.sourcePageUrl ?? options.task.sourcePageUrl,
     preferredVariantKey: options.task.variantKey
   });
-  if (probe.outputExtension !== options.task.outputExtension) {
-    throw new Error(t('errorHlsResumeFormatChanged'));
-  }
+  const task = options.task;
+  await ensureWritePermission(task.fileHandle);
+  if (task.directoryHandle) await ensureDirectoryWritePermission(task.directoryHandle);
 
   return runRecording({
     ...options,
-    taskId: options.task.id,
-    fileHandle: options.task.fileHandle,
-    directoryHandle: options.task.directoryHandle,
-    workingFileName: options.task.workingFileName,
-    finalFileName: options.task.finalFileName,
-    suggestedName: options.task.suggestedName,
     probe,
+    taskId: task.id,
+    fileHandle: task.fileHandle,
+    directoryHandle: task.directoryHandle,
+    workingFileName: task.workingFileName,
+    finalFileName: task.finalFileName,
+    suggestedName: task.suggestedName,
     mediaUrl: probe.mediaUrl,
-    startedAt: options.task.startedAt,
-    initialBytesWritten: options.task.bytesWritten,
-    initialSegmentsWritten: options.task.segmentsWritten,
-    initialRetryCount: options.task.retryCount,
-    initialLastSequence: options.task.lastSequence,
-    initialLastMapKey: options.task.lastMapKey,
-    initialPhase: 'capture'
+    startedAt: task.startedAt,
+    initialBytesWritten: task.bytesWritten,
+    initialSegmentsWritten: task.segmentsWritten,
+    initialRetryCount: task.retryCount,
+    initialLastSequence: task.lastSequence,
+    initialLastMapKey: task.lastMapKey,
+    initialPhase: task.phase ?? 'capture'
   });
 }
