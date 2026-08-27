@@ -122,8 +122,27 @@ function parseByteRange(value?: string): HlsByteRange | undefined {
   };
 }
 
+const HLS_INHERITED_QUERY_PARAMS = new Set(['pkey', 'safety_id']);
+
 function absoluteUrl(value: string, baseUrl: string): string {
-  return new URL(value, baseUrl).href;
+  const resolved = new URL(value, baseUrl);
+  const base = new URL(baseUrl);
+
+  // Some signed HLS CDNs (notably AcFun's tx-safety-video endpoint) put
+  // authorization tokens on the playlist URL while using relative URIs for
+  // variants, init maps and media segments. URL resolution intentionally drops
+  // the parent's query string, which makes those child requests fail. Carry the
+  // known signing parameters forward for same-origin child resources unless the
+  // child URI already supplied its own value.
+  if (resolved.origin === base.origin) {
+    for (const [key, value] of base.searchParams) {
+      if (HLS_INHERITED_QUERY_PARAMS.has(key) && !resolved.searchParams.has(key)) {
+        resolved.searchParams.set(key, value);
+      }
+    }
+  }
+
+  return resolved.href;
 }
 
 export function parseHlsPlaylist(text: string, playlistUrl: string): HlsPlaylist {
