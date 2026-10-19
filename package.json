@@ -1,12 +1,14 @@
 {
   "name": "media-downloader",
   "private": true,
-  "version": "0.6.1",
+  "version": "0.6.2",
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "test": "node scripts/test.mjs",
+    "test:media": "node scripts/test.mjs --media",
     "validate:i18n": "node scripts/validate-locales.mjs",
-    "build": "npm run validate:i18n && tsc -b && vite build",
+    "build": "npm run validate:i18n && npm test && tsc -b && vite build && node scripts/merge-hls-locales.mjs",
     "typecheck": "tsc -b",
     "preview": "vite preview"
   },

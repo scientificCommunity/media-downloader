@@ -22,5 +22,15 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Validate and build extension
+      - name: Validate, test and build extension
         run: npm run build
+
+      - name: Prepare generated-media test tools
+        run: |
+          if ! command -v ffmpeg >/dev/null || ! command -v ffprobe >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y ffmpeg
+          fi
+
+      - name: Test AES HLS to MP4 with generated video and audio
+        run: npm run test:media
